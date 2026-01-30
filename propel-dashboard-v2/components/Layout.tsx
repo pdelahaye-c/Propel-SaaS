@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { cn, Switch } from './ui';
 import { useTheme } from './ThemeProvider';
+import { useAuth } from './AuthProvider';
 
 // --- Types ---
 export type ViewName = 'dashboard' | 'properties' | 'leads' | 'buyers' | 'contracts' | 'call-logs' | 'inbox' | 'reports';
@@ -177,13 +178,34 @@ export const Sidebar = ({ isCollapsed, toggleCollapse, currentView, onViewChange
             </div>
         )}
 
-        <NavItem icon={LogOut} label="Log out" collapsed={isCollapsed} />
+        <LogoutNavItem collapsed={isCollapsed} />
       </div>
     </aside>
   );
 };
 
+const LogoutNavItem = ({ collapsed }: { collapsed: boolean }) => {
+  const { logout } = useAuth();
+  return (
+    <button
+      onClick={logout}
+      title={collapsed ? 'Log out' : undefined}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200",
+        "text-muted hover:bg-surface hover:text-foreground",
+        collapsed ? "justify-center px-2" : ""
+      )}
+    >
+      <LogOut className="h-4 w-4 shrink-0" />
+      {!collapsed && <span className="truncate">Log out</span>}
+    </button>
+  );
+};
+
 export const Topbar = () => {
+    const { user } = useAuth();
+    const initials = user ? `${user.firstName[0]}${user.lastName[0]}` : 'JD';
+
     return (
         <header className="sticky top-0 z-20 flex h-16 w-full items-center gap-4 border-b border-border bg-background/80 px-6 backdrop-blur transition-colors">
             <button className="md:hidden text-muted">
@@ -192,9 +214,9 @@ export const Topbar = () => {
             <div className="flex flex-1 items-center gap-4 md:gap-8">
                 <div className="relative flex-1 md:w-96 md:flex-none">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted" />
-                    <input 
-                        type="text" 
-                        placeholder="Search leads, properties..." 
+                    <input
+                        type="text"
+                        placeholder="Search leads, properties..."
                         className="h-9 w-full rounded-md border border-border bg-surface pl-9 pr-4 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
                     />
                 </div>
@@ -204,8 +226,8 @@ export const Topbar = () => {
                     <Bell className="h-5 w-5" />
                     <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-500"></span>
                 </button>
-                <div className="h-8 w-8 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-xs font-medium text-primary">
-                    JD
+                <div className="h-8 w-8 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-xs font-medium text-primary" title={user ? `${user.firstName} ${user.lastName}` : ''}>
+                    {initials}
                 </div>
             </div>
         </header>

@@ -1,0 +1,290 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// USER & AUTHENTICATION (new table)
+// ==========================================
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  firstName    String   @map("first_name")
+  lastName     String   @map("last_name")
+  role         String   @default("AGENT") // ADMIN, MANAGER, AGENT
+  avatarUrl    String?  @map("avatar_url")
+  phone        String?
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  assignedLeads     Lead[]
+  createdProperties Property[] @relation("CreatedByUser")
+
+  @@map("users")
+}
+
+// ==========================================
+// LEADS (existing Supabase table)
+// ==========================================
+
+model Lead {
+  id                   String    @id @default(uuid())
+  name                 String
+  phone                String
+  email                String
+  aiSummary            String?   @map("ai_summary")
+  heatScore            Int       @default(50) @map("heat_score")
+  source               String    @default("MANUAL")
+  sourceConversationId String?   @map("source_conversation_id")
+  status               String    @default("NEW")
+  searchCriteria       Json?     @map("search_criteria")
+  budgetMin            Int?      @map("budget_min")
+  budgetMax            Int?      @map("budget_max")
+  locationPreference   String?   @map("location_preference")
+  isOnline             Boolean   @default(false) @map("is_online")
+  lastSeenAt           DateTime? @map("last_seen_at")
+  assignedAgentId      String?   @map("assigned_agent_id")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  firstContactedAt     DateTime? @map("first_contacted_at")
+  agencyId             String?   @map("agency_id")
+
+  // Relations
+  assignedAgent User?          @relation(fields: [assignedAgentId], references: [id])
+  events        LeadEvent[]
+  aiActions     LeadAiAction[]
+
+  @@index([status])
+  @@index([assignedAgentId])
+  @@map("leads")
+}
+
+// ==========================================
+// LEAD EVENTS (existing Supabase table)
+// ==========================================
+
+model LeadEvent {
+  id        String   @id @default(uuid())
+  leadId    String   @map("lead_id")
+  type      String
+  data      Json?
+  summary   String?
+  sentiment String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  lead      Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  aiActions LeadAiAction[]
+
+  @@index([leadId])
+  @@map("lead_events")
+}
+
+// ==========================================
+// AI ACTIONS for Leads (existing Supabase table)
+// ==========================================
+
+model LeadAiAction {
+  id          String    @id @default(uuid())
+  leadId      String    @map("lead_id")
+  eventId     String?   @map("event_id")
+  type        String
+  status      String    @default("PENDING")
+  description String
+  createdAt   DateTime  @default(now()) @map("created_at")
+  executedAt  DateTime? @map("executed_at")
+
+  // Relations
+  lead  Lead       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  event LeadEvent? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([eventId])
+  @@map("ai_actions")
+}
+
+// ==========================================
+// SUBSCRIPTIONS (existing Supabase table)
+// ==========================================
+
+model Subscription {
+  id                   String    @id @default(uuid())
+  userId               String    @map("user_id")
+  stripeSubscriptionId String?   @map("stripe_subscription_id")
+  status               String    @default("inactive")
+  priceId              String?   @map("price_id")
+  currentPeriodEnd     DateTime? @map("current_period_end")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  @@map("subscriptions")
+}
+
+// ==========================================
+// STRIPE CUSTOMERS (existing Supabase table)
+// ==========================================
+
+model StripeCustomer {
+  id               String   @id @default(uuid())
+  stripeCustomerId String?  @map("stripe_customer_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@map("stripe_customers")
+}
+
+// ==========================================
+// PROPERTIES (new table)
+// ==========================================
+
+model Property {
+  id          String   @id @default(uuid())
+  sku         String   @unique
+  title       String
+  address     String
+  city        String
+  price       Float
+  status      String   @default("FOR_SALE") // FOR_SALE, SOLD, RENTED, UNDER_OFFER
+  type        String   @default("Apartment") // Apartment, House, Office, Building
+  beds        Int      @default(0)
+  baths       Int      @default(0)
+  sqft        Int      @default(0)
+  surface     Float    @default(0) // m2
+  imageUrl    String   @default("") @map("image_url")
+  features    String   @default("[]") // JSON array stored as string
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdById String?  @map("created_by_id")
+
+  // Relations
+  createdBy User?      @relation("CreatedByUser", fields: [createdById], references: [id])
+  contracts Contract[]
+
+  @@index([status])
+  @@index([city])
+  @@map("properties")
+}
+
+// ==========================================
+// BUYERS (new table)
+// ==========================================
+
+model Buyer {
+  id           String   @id @default(uuid())
+  name         String
+  email        String
+  phone        String
+  type         String   @default("Individual") // Individual, Investor, Company
+  status       String   @default("Active") // Active, Inactive
+  budget       Float    @default(0)
+  requirements String   @default("")
+  lastActive   String   @default("") @map("last_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  contracts Contract[] @relation("BuyerContracts")
+
+  @@index([status])
+  @@map("buyers")
+}
+
+// ==========================================
+// SELLERS (new table)
+// ==========================================
+
+model Seller {
+  id        String   @id @default(uuid())
+  name      String
+  email     String
+  phone     String   @default("")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  contracts Contract[] @relation("SellerContracts")
+
+  @@map("sellers")
+}
+
+// ==========================================
+// CONTRACTS (new table)
+// ==========================================
+
+model Contract {
+  id           String   @id @default(uuid())
+  reference    String
+  stage        String   @default("")
+  agencyName   String   @default("") @map("agency_name")
+  offerDate    String?  @map("offer_date")
+  contractDate String?  @map("contract_date")
+  signDate     String?  @map("sign_date")
+  price        Float    @default(0)
+  fees         Float    @default(0)
+  agencyFees   Float    @default(0) @map("agency_fees")
+  status       String   @default("Active") // Active, Closed
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  propertyId   String   @map("property_id")
+  sellerId     String   @map("seller_id")
+  buyerId      String   @map("buyer_id")
+
+  // Relations
+  property Property @relation(fields: [propertyId], references: [id])
+  seller   Seller   @relation("SellerContracts", fields: [sellerId], references: [id])
+  buyer    Buyer    @relation("BuyerContracts", fields: [buyerId], references: [id])
+
+  @@index([status])
+  @@index([propertyId])
+  @@map("contracts")
+}
+
+// ==========================================
+// CALL LOGS (new table)
+// ==========================================
+
+model CallLog {
+  id             String   @id @default(uuid())
+  callerName     String   @map("caller_name")
+  phoneNumber    String   @map("phone_number")
+  isKnownContact Boolean  @default(false) @map("is_known_contact")
+  leadStatus     String   @default("NEW") @map("lead_status")
+  direction      String // INBOUND, OUTBOUND
+  status         String // COMPLETED, MISSED, VOICEMAIL
+  duration       Int      @default(0) // seconds
+  timestamp      DateTime @default(now())
+  summary        String   @default("")
+  transcript     String   @default("")
+  sentiment      String   @default("NEUTRAL") // POSITIVE, NEUTRAL, NEGATIVE
+  tags           String   @default("[]") // JSON array stored as string
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  callLogActions CallLogAction[]
+
+  @@index([direction])
+  @@index([status])
+  @@map("call_logs")
+}
+
+// ==========================================
+// CALL LOG AI ACTIONS (new table)
+// ==========================================
+
+model CallLogAction {
+  id          String   @id @default(uuid())
+  type        String // EMAIL, SMS, WHATSAPP, CALENDAR, CRM_UPDATE
+  status      String   @default("PENDING") // SUCCESS, PENDING, FAILED
+  description String
+  timestamp   DateTime @default(now())
+  callLogId   String   @map("call_log_id")
+
+  callLog CallLog @relation(fields: [callLogId], references: [id], onDelete: Cascade)
+
+  @@index([callLogId])
+  @@map("call_log_actions")
+}
