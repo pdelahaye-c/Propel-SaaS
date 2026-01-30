@@ -1,0 +1,209 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// USER & AUTHENTICATION
+// ==========================================
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         String   @default("AGENT") // ADMIN, MANAGER, AGENT
+  avatarUrl    String?
+  phone        String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  assignedLeads Lead[]
+  createdProperties Property[] @relation("CreatedByUser")
+}
+
+// ==========================================
+// LEADS
+// ==========================================
+
+model Lead {
+  id                     String   @id @default(cuid())
+  name                   String
+  email                  String
+  phone                  String
+  status                 String   @default("NEW") // NEW, CONTACTED, QUALIFIED, NEGOTIATION, CLOSED, LOST
+  source                 String   @default("MANUAL") // VOICE_AGENT, CHAT_WIDGET, WEB_FORM, MANUAL
+  heatScore              Int      @default(50)
+  lastInteractionTime    DateTime @default(now())
+  lastInteractionSummary String   @default("")
+  budget                 Float    @default(0)
+  locationPreference     String   @default("")
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  // Relations
+  assignedAgent   User?      @relation(fields: [assignedAgentId], references: [id])
+  assignedAgentId String?
+  activities      Activity[]
+
+  @@index([status])
+  @@index([assignedAgentId])
+}
+
+model Activity {
+  id        String   @id @default(cuid())
+  type      String // CALL, NOTE, EMAIL, SMS, VIEWING
+  content   String
+  timestamp DateTime @default(now())
+
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  leadId String
+
+  @@index([leadId])
+}
+
+// ==========================================
+// PROPERTIES
+// ==========================================
+
+model Property {
+  id        String   @id @default(cuid())
+  sku       String   @unique
+  title     String
+  address   String
+  city      String
+  price     Float
+  status    String   @default("FOR_SALE") // FOR_SALE, SOLD, RENTED, UNDER_OFFER
+  type      String   @default("Apartment") // Apartment, House, Office, Building
+  beds      Int      @default(0)
+  baths     Int      @default(0)
+  sqft      Int      @default(0)
+  surface   Float    @default(0) // m2
+  imageUrl  String   @default("")
+  features  String   @default("[]") // JSON array stored as string
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  createdBy   User?      @relation("CreatedByUser", fields: [createdById], references: [id])
+  createdById String?
+  contracts   Contract[]
+
+  @@index([status])
+  @@index([city])
+}
+
+// ==========================================
+// BUYERS
+// ==========================================
+
+model Buyer {
+  id           String   @id @default(cuid())
+  name         String
+  email        String
+  phone        String
+  type         String   @default("Individual") // Individual, Investor, Company
+  status       String   @default("Active") // Active, Inactive
+  budget       Float    @default(0)
+  requirements String   @default("")
+  lastActive   String   @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  contracts Contract[] @relation("BuyerContracts")
+
+  @@index([status])
+}
+
+// ==========================================
+// SELLERS
+// ==========================================
+
+model Seller {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  phone     String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contracts Contract[] @relation("SellerContracts")
+}
+
+// ==========================================
+// CONTRACTS
+// ==========================================
+
+model Contract {
+  id           String   @id @default(cuid())
+  reference    String
+  stage        String   @default("")
+  agencyName   String   @default("")
+  offerDate    String?
+  contractDate String?
+  signDate     String?
+  price        Float    @default(0)
+  fees         Float    @default(0)
+  agencyFees   Float    @default(0)
+  status       String   @default("Active") // Active, Closed
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  property   Property @relation(fields: [propertyId], references: [id])
+  propertyId String
+  seller     Seller   @relation("SellerContracts", fields: [sellerId], references: [id])
+  sellerId   String
+  buyer      Buyer    @relation("BuyerContracts", fields: [buyerId], references: [id])
+  buyerId    String
+
+  @@index([status])
+  @@index([propertyId])
+}
+
+// ==========================================
+// CALL LOGS
+// ==========================================
+
+model CallLog {
+  id             String   @id @default(cuid())
+  callerName     String
+  phoneNumber    String
+  isKnownContact Boolean  @default(false)
+  leadStatus     String   @default("NEW")
+  direction      String // INBOUND, OUTBOUND
+  status         String // COMPLETED, MISSED, VOICEMAIL
+  duration       Int      @default(0) // seconds
+  timestamp      DateTime @default(now())
+  summary        String   @default("")
+  transcript     String   @default("")
+  sentiment      String   @default("NEUTRAL") // POSITIVE, NEUTRAL, NEGATIVE
+  tags           String   @default("[]") // JSON array stored as string
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  aiActions AIAction[]
+
+  @@index([direction])
+  @@index([status])
+}
+
+model AIAction {
+  id          String   @id @default(cuid())
+  type        String // EMAIL, SMS, WHATSAPP, CALENDAR, CRM_UPDATE
+  status      String   @default("PENDING") // SUCCESS, PENDING, FAILED
+  description String
+  timestamp   DateTime @default(now())
+
+  callLog   CallLog @relation(fields: [callLogId], references: [id], onDelete: Cascade)
+  callLogId String
+
+  @@index([callLogId])
+}
