@@ -22,6 +22,15 @@ const createCallLogSchema = z.object({
 
 const updateCallLogSchema = createCallLogSchema.partial();
 
+// Transform call log to frontend format (alias callLogActions → aiActions)
+function transformCallLog(log: any) {
+  return {
+    ...log,
+    tags: JSON.parse(log.tags),
+    aiActions: log.callLogActions || [],
+  };
+}
+
 // --- GET /api/call-logs ---
 
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
@@ -34,9 +43,9 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     if (sentiment && typeof sentiment === 'string') where.sentiment = sentiment;
     if (search && typeof search === 'string') {
       where.OR = [
-        { callerName: { contains: search } },
+        { callerName: { contains: search, mode: 'insensitive' } },
         { phoneNumber: { contains: search } },
-        { summary: { contains: search } },
+        { summary: { contains: search, mode: 'insensitive' } },
       ];
     }
 
@@ -47,7 +56,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       prisma.callLog.findMany({
         where,
         include: {
-          aiActions: { orderBy: { timestamp: 'desc' } },
+          callLogActions: { orderBy: { timestamp: 'desc' } },
         },
         orderBy: { timestamp: 'desc' },
         skip: (pageNum - 1) * limitNum,
@@ -56,13 +65,8 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       prisma.callLog.count({ where }),
     ]);
 
-    const parsed = callLogs.map(log => ({
-      ...log,
-      tags: JSON.parse(log.tags),
-    }));
-
     res.json({
-      data: parsed,
+      data: callLogs.map(transformCallLog),
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -75,84 +79,8 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// --- GET /api/call-logs/:id ---
-
-router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const callLog = await prisma.callLog.findUnique({
-      where: { id: req.params.id },
-      include: { aiActions: true },
-    });
-
-    if (!callLog) {
-      res.status(404).json({ error: 'Call log not found' });
-      return;
-    }
-
-    res.json({
-      ...callLog,
-      tags: JSON.parse(callLog.tags),
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// --- POST /api/call-logs ---
-
-router.post('/', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const data = createCallLogSchema.parse(req.body);
-    const callLog = await prisma.callLog.create({
-      data: {
-        ...data,
-        tags: JSON.stringify(data.tags || []),
-      },
-      include: { aiActions: true },
-    });
-    res.status(201).json({
-      ...callLog,
-      tags: JSON.parse(callLog.tags),
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// --- PUT /api/call-logs/:id ---
-
-router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const data = updateCallLogSchema.parse(req.body);
-    const callLog = await prisma.callLog.update({
-      where: { id: req.params.id },
-      data: {
-        ...data,
-        tags: data.tags ? JSON.stringify(data.tags) : undefined,
-      },
-      include: { aiActions: true },
-    });
-    res.json({
-      ...callLog,
-      tags: JSON.parse(callLog.tags),
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// --- DELETE /api/call-logs/:id ---
-
-router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    await prisma.callLog.delete({ where: { id: req.params.id } });
-    res.json({ success: true });
-  } catch (err) {
-    next(err);
-  }
-});
-
 // --- GET /api/call-logs/stats/summary ---
+// NOTE: This must be before /:id to avoid route conflict
 
 router.get('/stats/summary', async (_req: Request, res: Response, next: NextFunction) => {
   try {
@@ -181,6 +109,74 @@ router.get('/stats/summary', async (_req: Request, res: Response, next: NextFunc
       totalMinutes: Math.round(totalMinutes),
       avgDurationSeconds: Math.round(avgDuration),
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- GET /api/call-logs/:id ---
+
+router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const callLog = await prisma.callLog.findUnique({
+      where: { id: req.params.id },
+      include: { callLogActions: true },
+    });
+
+    if (!callLog) {
+      res.status(404).json({ error: 'Call log not found' });
+      return;
+    }
+
+    res.json(transformCallLog(callLog));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- POST /api/call-logs ---
+
+router.post('/', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = createCallLogSchema.parse(req.body);
+    const callLog = await prisma.callLog.create({
+      data: {
+        ...data,
+        tags: JSON.stringify(data.tags || []),
+      },
+      include: { callLogActions: true },
+    });
+    res.status(201).json(transformCallLog(callLog));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- PUT /api/call-logs/:id ---
+
+router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = updateCallLogSchema.parse(req.body);
+    const callLog = await prisma.callLog.update({
+      where: { id: req.params.id },
+      data: {
+        ...data,
+        tags: data.tags ? JSON.stringify(data.tags) : undefined,
+      },
+      include: { callLogActions: true },
+    });
+    res.json(transformCallLog(callLog));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- DELETE /api/call-logs/:id ---
+
+router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await prisma.callLog.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }

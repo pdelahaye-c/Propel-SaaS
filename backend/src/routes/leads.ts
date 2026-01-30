@@ -15,13 +15,32 @@ const createLeadSchema = z.object({
   status: z.enum(['NEW', 'CONTACTED', 'QUALIFIED', 'NEGOTIATION', 'CLOSED', 'LOST']).optional(),
   source: z.enum(['VOICE_AGENT', 'CHAT_WIDGET', 'WEB_FORM', 'MANUAL']).optional(),
   heatScore: z.number().min(0).max(100).optional(),
-  budget: z.number().optional(),
+  budgetMin: z.number().int().optional(),
+  budgetMax: z.number().int().optional(),
   locationPreference: z.string().optional(),
-  lastInteractionSummary: z.string().optional(),
+  aiSummary: z.string().optional(),
   assignedAgentId: z.string().optional(),
 });
 
 const updateLeadSchema = createLeadSchema.partial();
+
+// Transform Supabase Lead model to frontend-compatible format
+function transformLead(lead: any) {
+  return {
+    ...lead,
+    // Backward-compatible fields for frontend
+    budget: lead.budgetMax || lead.budgetMin || 0,
+    lastInteractionSummary: lead.aiSummary || '',
+    lastInteractionTime: lead.updatedAt,
+    // Map events to activities format for frontend
+    activities: (lead.events || []).map((e: any) => ({
+      id: e.id,
+      type: e.type,
+      content: e.summary || (e.data ? JSON.stringify(e.data) : ''),
+      timestamp: e.createdAt,
+    })),
+  };
+}
 
 // --- GET /api/leads ---
 
@@ -39,8 +58,8 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     }
     if (search && typeof search === 'string') {
       where.OR = [
-        { name: { contains: search } },
-        { email: { contains: search } },
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
         { phone: { contains: search } },
       ];
     }
@@ -55,14 +74,14 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
           assignedAgent: {
             select: { id: true, firstName: true, lastName: true },
           },
-          activities: {
-            orderBy: { timestamp: 'desc' },
+          events: {
+            orderBy: { createdAt: 'desc' },
             take: 5,
           },
         },
         orderBy: sort && typeof sort === 'string'
           ? { [sort]: order === 'asc' ? 'asc' : 'desc' }
-          : { lastInteractionTime: 'desc' },
+          : { updatedAt: 'desc' },
         skip: (pageNum - 1) * limitNum,
         take: limitNum,
       }),
@@ -70,7 +89,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     ]);
 
     res.json({
-      data: leads,
+      data: leads.map(transformLead),
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -93,8 +112,8 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
         assignedAgent: {
           select: { id: true, firstName: true, lastName: true },
         },
-        activities: {
-          orderBy: { timestamp: 'desc' },
+        events: {
+          orderBy: { createdAt: 'desc' },
         },
       },
     });
@@ -104,7 +123,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       return;
     }
 
-    res.json(lead);
+    res.json(transformLead(lead));
   } catch (err) {
     next(err);
   }
@@ -118,17 +137,27 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 
     const lead = await prisma.lead.create({
       data: {
-        ...data,
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        status: data.status,
+        source: data.source,
+        heatScore: data.heatScore,
+        budgetMin: data.budgetMin,
+        budgetMax: data.budgetMax,
+        locationPreference: data.locationPreference,
+        aiSummary: data.aiSummary,
         assignedAgentId: data.assignedAgentId || req.user!.userId,
       },
       include: {
         assignedAgent: {
           select: { id: true, firstName: true, lastName: true },
         },
+        events: true,
       },
     });
 
-    res.status(201).json(lead);
+    res.status(201).json(transformLead(lead));
   } catch (err) {
     next(err);
   }
@@ -144,16 +173,16 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
       where: { id: req.params.id },
       data: {
         ...data,
-        lastInteractionTime: new Date(),
       },
       include: {
         assignedAgent: {
           select: { id: true, firstName: true, lastName: true },
         },
+        events: true,
       },
     });
 
-    res.json(lead);
+    res.json(transformLead(lead));
   } catch (err) {
     next(err);
   }
@@ -171,6 +200,7 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
 });
 
 // --- POST /api/leads/:id/activities ---
+// Creates a LeadEvent (backward-compatible endpoint name)
 
 router.post('/:id/activities', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -180,23 +210,29 @@ router.post('/:id/activities', async (req: Request, res: Response, next: NextFun
     });
     const data = schema.parse(req.body);
 
-    const activity = await prisma.activity.create({
+    const event = await prisma.leadEvent.create({
       data: {
-        ...data,
+        type: data.type,
+        summary: data.content,
         leadId: req.params.id,
       },
     });
 
-    // Update lead's last interaction
+    // Update lead's ai_summary with latest interaction
     await prisma.lead.update({
       where: { id: req.params.id },
       data: {
-        lastInteractionTime: new Date(),
-        lastInteractionSummary: data.content.substring(0, 200),
+        aiSummary: data.content.substring(0, 500),
       },
     });
 
-    res.status(201).json(activity);
+    // Return in Activity format for frontend compatibility
+    res.status(201).json({
+      id: event.id,
+      type: event.type,
+      content: event.summary || '',
+      timestamp: event.createdAt,
+    });
   } catch (err) {
     next(err);
   }

@@ -16,12 +16,15 @@ router.get('/kpis', async (_req: Request, res: Response, next: NextFunction) => 
       prisma.contract.count({ where: { status: 'Closed' } }),
     ]);
 
-    // Calculate revenue potential from qualified+ leads
+    // Calculate revenue potential from qualified+ leads using budgetMax
     const qualifiedLeads = await prisma.lead.findMany({
       where: { status: { in: ['QUALIFIED', 'NEGOTIATION'] } },
-      select: { budget: true },
+      select: { budgetMax: true, budgetMin: true },
     });
-    const revenuePotential = qualifiedLeads.reduce((sum, l) => sum + l.budget, 0);
+    const revenuePotential = qualifiedLeads.reduce(
+      (sum, l) => sum + (l.budgetMax || l.budgetMin || 0),
+      0
+    );
 
     // Calculate conversion rate
     const closedLeads = await prisma.lead.count({ where: { status: 'CLOSED' } });

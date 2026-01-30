@@ -37,7 +37,7 @@ async function main() {
 
   console.log('  Users created');
 
-  // --- Create Leads ---
+  // --- Create Leads (uses Supabase schema: budgetMin/budgetMax, aiSummary) ---
   const leads = [
     {
       name: 'Sophie Martin',
@@ -46,8 +46,8 @@ async function main() {
       status: 'NEW',
       source: 'VOICE_AGENT',
       heatScore: 95,
-      lastInteractionSummary: 'Called twice. Looking for T3 in Bastille with balcony. Urgent move-in.',
-      budget: 550000,
+      aiSummary: 'Called twice. Looking for T3 in Bastille with balcony. Urgent move-in.',
+      budgetMax: 550000,
       locationPreference: 'Paris 11',
       assignedAgentId: admin.id,
     },
@@ -58,8 +58,8 @@ async function main() {
       status: 'CONTACTED',
       source: 'CHAT_WIDGET',
       heatScore: 78,
-      lastInteractionSummary: 'Chatted about 4-bed house in Vincennes. Selling current flat first.',
-      budget: 850000,
+      aiSummary: 'Chatted about 4-bed house in Vincennes. Selling current flat first.',
+      budgetMax: 850000,
       locationPreference: 'Vincennes',
       assignedAgentId: admin.id,
     },
@@ -70,8 +70,8 @@ async function main() {
       status: 'QUALIFIED',
       source: 'WEB_FORM',
       heatScore: 60,
-      lastInteractionSummary: 'Viewing scheduled for Friday. Pre-approved for mortgage.',
-      budget: 400000,
+      aiSummary: 'Viewing scheduled for Friday. Pre-approved for mortgage.',
+      budgetMax: 400000,
       locationPreference: 'Lyon 06',
       assignedAgentId: admin.id,
     },
@@ -82,8 +82,8 @@ async function main() {
       status: 'NEW',
       source: 'VOICE_AGENT',
       heatScore: 88,
-      lastInteractionSummary: 'Voice AI flagged frustration. Asking about fees.',
-      budget: 600000,
+      aiSummary: 'Voice AI flagged frustration. Asking about fees.',
+      budgetMax: 600000,
       locationPreference: 'Bordeaux',
       assignedAgentId: agent1.id,
     },
@@ -94,8 +94,8 @@ async function main() {
       status: 'NEGOTIATION',
       source: 'MANUAL',
       heatScore: 45,
-      lastInteractionSummary: 'Offer submitted on Rue de Rivoli penthouse.',
-      budget: 2500000,
+      aiSummary: 'Offer submitted on Rue de Rivoli penthouse.',
+      budgetMax: 2500000,
       locationPreference: 'Paris 01',
       assignedAgentId: admin.id,
     },
@@ -307,7 +307,7 @@ async function main() {
   }
   console.log('  Contracts created');
 
-  // --- Create Call Logs ---
+  // --- Create Call Logs with CallLogActions ---
   const callLog1 = await prisma.callLog.create({
     data: {
       callerName: 'Sophie Martin',
@@ -331,7 +331,7 @@ Sophie: Non c'est tout, merci !`,
     },
   });
 
-  await prisma.aIAction.createMany({
+  await prisma.callLogAction.createMany({
     data: [
       { type: 'CALENDAR', status: 'SUCCESS', description: 'Scheduled viewing: Sat 14:00', callLogId: callLog1.id },
       { type: 'WHATSAPP', status: 'SUCCESS', description: 'Sent property card & access code', callLogId: callLog1.id },
@@ -361,7 +361,7 @@ AI: Je note. Quelle est votre adresse email ?`,
     },
   });
 
-  await prisma.aIAction.createMany({
+  await prisma.callLogAction.createMany({
     data: [
       { type: 'CRM_UPDATE', status: 'SUCCESS', description: 'Created new Lead: "Investor Lyon"', callLogId: callLog2.id },
       { type: 'EMAIL', status: 'PENDING', description: 'Drafted selection email (Wait for agent approval)', callLogId: callLog2.id },
@@ -384,7 +384,7 @@ AI: Je note. Quelle est votre adresse email ?`,
     },
   });
 
-  await prisma.aIAction.create({
+  await prisma.callLogAction.create({
     data: {
       type: 'SMS',
       status: 'SUCCESS',
